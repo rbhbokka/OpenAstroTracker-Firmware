@@ -153,3 +153,35 @@ TEST(DeclinationTest, FromTotalSecondsClamps)
     EXPECT_EQ(-180L * 3600L, Declination::fromTotalSeconds(-200L * 3600L).getTotalSeconds());
     EXPECT_EQ(12345L, Declination::fromTotalSeconds(12345L).getTotalSeconds());
 }
+
+TEST(DeclinationTest, CelestialWireRoundTrip)
+{
+    // Reproduces the composition that Declination::fromCelestialDegrees and
+    // Declination::getCelestialDegrees perform for the Meade :Sd/:Gd/:CM
+    // commands. src/Declination.cpp itself needs Arduino String and the board
+    // configuration, so it cannot be linked here: this pins that the sequence
+    // is correct, not that src/Declination.cpp still uses it.
+    struct WireDec {
+        int deg;
+        int min;
+        int sec;
+    };
+    const WireDec cases[]    = {{-5, 30, 0}, {-24, 23, 0}, {-69, 6, 0}, {-89, 59, 59}, {5, 30, 0}, {0, 30, 0}, {45, 0, 0}, {89, 59, 59}};
+    const bool hemispheres[] = {true, false};
+
+    for (bool north : hemispheres)
+    {
+        for (const WireDec &wire : cases)
+        {
+            const long celestial = core::DayTime::joinSeconds(wire.deg, wire.min, wire.sec);
+            const Declination onAxis(Declination::fromTotalSeconds(Declination::celestialToAxisSeconds(celestial, north)));
+
+            int deg, min, sec;
+            core::DayTime::splitSeconds(Declination::axisToCelestialSeconds(onAxis.getTotalSeconds(), north), deg, min, sec);
+
+            EXPECT_EQ(wire.deg, deg) << "north=" << north << " deg=" << wire.deg;
+            EXPECT_EQ(wire.min, min) << "north=" << north << " deg=" << wire.deg;
+            EXPECT_EQ(wire.sec, sec) << "north=" << north << " deg=" << wire.deg;
+        }
+    }
+}

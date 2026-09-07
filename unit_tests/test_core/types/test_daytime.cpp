@@ -241,3 +241,63 @@ TEST(DayTimeTest, FormatStringCustomSecsNegative)
     dt.formatString(buf, "{d}:{m}:{s}", &customSecs);
     EXPECT_STREQ("-100:30:15", buf);
 }
+
+// ---------------------------------------------------------------------------
+// joinSeconds — the inverse of splitSeconds, and the shared implementation of
+// the DayTime(int, int, int) constructor.
+// ---------------------------------------------------------------------------
+
+TEST(DayTimeTest, JoinSeconds)
+{
+    EXPECT_EQ(0L, DayTime::joinSeconds(0, 0, 0));
+    EXPECT_EQ(3600L, DayTime::joinSeconds(1, 0, 0));
+    EXPECT_EQ(5445L, DayTime::joinSeconds(1, 30, 45));
+    EXPECT_EQ(-5445L, DayTime::joinSeconds(-1, 30, 45));
+}
+
+TEST(DayTimeTest, JoinSecondsIsUsedByHMSConstructor)
+{
+    EXPECT_EQ(DayTime::joinSeconds(1, 30, 45), DayTime(1, 30, 45).getTotalSeconds());
+    EXPECT_EQ(DayTime::joinSeconds(-2, 31, 18), DayTime(-2, 31, 18).getTotalSeconds());
+    // Callers that pass negative minutes/seconds keep subtracting from the
+    // magnitude, as NegativeConstructor and GetTimeRefNegative above rely on.
+    EXPECT_EQ(DayTime::joinSeconds(-2, -30, -15), DayTime(-2, -30, -15).getTotalSeconds());
+}
+
+TEST(DayTimeTest, JoinSecondsInvertsSplitSeconds)
+{
+    // Skips (-3600, 0): splitSeconds reports h == 0 there, which drops the sign
+    // (see JoinSecondsCannotSignSubHourValues).
+    for (long secs = -180L * 3600L; secs <= 180L * 3600L; secs += 907L)
+    {
+        if ((secs < 0L) && (secs > -3600L))
+        {
+            continue;
+        }
+        int h, m, s;
+        DayTime::splitSeconds(secs, h, m, s);
+        EXPECT_EQ(secs, DayTime::joinSeconds(h, m, s)) << "secs=" << secs;
+    }
+}
+
+TEST(DayTimeTest, JoinSecondsCannotSignSubHourValues)
+{
+    // Integer -0 is 0, so a value between -1 and 0 hours (or degrees) has no
+    // way to express its sign through h. Both spellings join to the same
+    // positive value; representing -00:30:00 needs a separate sign, not a
+    // different join.
+    EXPECT_EQ(1800L, DayTime::joinSeconds(0, 30, 0));
+    EXPECT_EQ(1800L, DayTime::joinSeconds(-0, 30, 0));
+}
+
+TEST(DayTimeTest, JoinSecondsNegativeDegreesMoveAwayFromZero)
+{
+    // Declinations off the Meade wire: the sign sits on the degrees and the
+    // minutes/seconds are unsigned magnitudes, so they must extend the value
+    // away from zero. Adding them toward zero instead put :Sd-05*30:00# back
+    // on the wire as -04*30:00 (see Declination::fromCelestialDegrees).
+    EXPECT_EQ(-(5L * 3600L + 30L * 60L), DayTime::joinSeconds(-5, 30, 0));
+    EXPECT_EQ(-(24L * 3600L + 23L * 60L), DayTime::joinSeconds(-24, 23, 0));
+    EXPECT_EQ(-(69L * 3600L + 6L * 60L), DayTime::joinSeconds(-69, 6, 0));
+    EXPECT_EQ(-(89L * 3600L + 59L * 60L + 59L), DayTime::joinSeconds(-89, 59, 59));
+}
