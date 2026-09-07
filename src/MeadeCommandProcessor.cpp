@@ -104,16 +104,33 @@ meade::DecCoordinate decFrom(const Declination &d)
     // correction before splitting into components.
     int deg, min, sec;
     d.getCelestialDegrees(deg, min, sec);
+    // getCelestialDegrees folds the sign into `deg`, where anything between 0
+    // and -1 degrees comes back as +0. Read the sign off the undivided total.
+    const long celestialSeconds = Declination::axisToCelestialSeconds(d.getTotalSeconds(), inNorthernHemisphere);
     return meade::DecCoordinate {
-        static_cast<int16_t>(deg),
+        static_cast<uint16_t>(deg < 0 ? -deg : deg),
         static_cast<uint8_t>(min),
         static_cast<uint8_t>(sec),
+        celestialSeconds < 0,
     };
 }
 
 Declination decFromWire(meade::DecCoordinate const &d)
 {
-    return Declination::fromCelestialDegrees(d.degrees, d.minutes, d.seconds);
+    // fromCelestialDegrees carries the sign in its `deg` parameter, so a
+    // coordinate such as "-00*30:00" still arrives there unsigned. The parser
+    // keeps sign and magnitude apart up to this call.
+    const int degrees = d.negative ? -static_cast<int>(d.degrees) : static_cast<int>(d.degrees);
+    return Declination::fromCelestialDegrees(degrees, d.minutes, d.seconds);
+}
+
+// Signed arc-seconds for a magnitude/sign pair. The Latitude and Longitude
+// constructors take signed degrees, which cannot express a site between 0 and
+// -1 degree, so callers add this total to a zeroed coordinate instead.
+long siteSecondsFrom(uint16_t degrees, uint8_t minutes, bool negative)
+{
+    const long seconds = ((static_cast<long>(degrees) * 60L) + minutes) * 60L;
+    return negative ? -seconds : seconds;
 }
 }  // namespace
 
@@ -161,18 +178,24 @@ bool MeadeCommandProcessor::onIsGuiding()
 meade::MeadeLatitude MeadeCommandProcessor::onSiteLatitude()
 {
     const Latitude lat = _mount->latitude();
+    // getHours() folds the sign into the degrees component, so a site between
+    // 0 and -1 degrees reports as +0. Read the sign off the total instead.
+    const int degrees = lat.getHours();
     return meade::MeadeLatitude {
-        static_cast<int16_t>(lat.getHours()),
+        static_cast<uint16_t>(degrees < 0 ? -degrees : degrees),
         static_cast<uint8_t>(lat.getMinutes()),
+        lat.getTotalSeconds() < 0,
     };
 }
 
 meade::MeadeLongitude MeadeCommandProcessor::onSiteLongitude()
 {
     const Longitude lon = _mount->longitude();
+    const int degrees   = lon.getHours();
     return meade::MeadeLongitude {
-        static_cast<int16_t>(lon.getHours()),
+        static_cast<uint16_t>(degrees < 0 ? -degrees : degrees),
         static_cast<uint8_t>(lon.getMinutes()),
+        lon.getTotalSeconds() < 0,
     };
 }
 
@@ -300,13 +323,17 @@ bool MeadeCommandProcessor::onSyncCoordinates(meade::DecCoordinate dec, meade::R
 
 bool MeadeCommandProcessor::onSetSiteLatitude(meade::MeadeLatitude lat)
 {
-    _mount->setLatitude(Latitude(static_cast<int>(lat.degrees), static_cast<int>(lat.minutes), 0));
+    Latitude value;
+    value.addSeconds(siteSecondsFrom(lat.degrees, lat.minutes, lat.negative));
+    _mount->setLatitude(value);
     return true;
 }
 
 bool MeadeCommandProcessor::onSetSiteLongitude(meade::MeadeLongitude lon)
 {
-    _mount->setLongitude(Longitude(static_cast<int>(lon.degrees), static_cast<int>(lon.minutes), 0));
+    Longitude value;
+    value.addSeconds(siteSecondsFrom(lon.degrees, lon.minutes, lon.negative));
+    _mount->setLongitude(value);
     return true;
 }
 
