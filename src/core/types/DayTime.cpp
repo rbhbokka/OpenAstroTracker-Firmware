@@ -15,9 +15,7 @@ DayTime::DayTime(const DayTime &other)
 
 DayTime::DayTime(int h, int m, int s)
 {
-    long sgn     = sign(h);
-    h            = abs(h);
-    totalSeconds = sgn * ((60L * h + m) * 60L + s);
+    totalSeconds = joinSeconds(h, m, s);
 }
 
 DayTime::DayTime(float timeInHours)
@@ -83,6 +81,11 @@ void DayTime::splitSeconds(long secs, int &h, int &m, int &s)
     m              = static_cast<int>(remainder / 60L);
     s              = static_cast<int>(remainder - (m * 60L));
     h *= sign(secs);
+}
+
+long DayTime::joinSeconds(int h, int m, int s)
+{
+    return sign(h) * ((60L * labs(h) + m) * 60L + s);
 }
 
 void DayTime::set(int h, int m, int s)

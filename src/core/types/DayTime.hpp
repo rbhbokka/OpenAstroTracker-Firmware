@@ -35,6 +35,13 @@ class DayTime
     // Split signed seconds into (signed) hours plus unsigned minutes/seconds.
     static void splitSeconds(long secs, int &h, int &m, int &s);
 
+    // Join hours/minutes/seconds into signed seconds. The sign is taken from h
+    // alone; m and s are added to the magnitude as given, so a negative m or s
+    // subtracts from it, exactly as the DayTime(int, int, int) constructor has
+    // always done. Inverts splitSeconds for every value except -3599..-1
+    // seconds, where splitSeconds reports h == 0 and the sign is already lost.
+    static long joinSeconds(int h, int m, int s);
+
     virtual void set(int h, int m, int s);
     void set(const DayTime &other);
 
