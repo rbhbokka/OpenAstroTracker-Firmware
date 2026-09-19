@@ -117,11 +117,12 @@ meade::DecCoordinate decFrom(const Declination &d)
 
 Declination decFromWire(meade::DecCoordinate const &d)
 {
-    // fromCelestialDegrees carries the sign in its `deg` parameter, so a
-    // coordinate such as "-00*30:00" still arrives there unsigned. The parser
-    // keeps sign and magnitude apart up to this call.
-    const int degrees = d.negative ? -static_cast<int>(d.degrees) : static_cast<int>(d.degrees);
-    return Declination::fromCelestialDegrees(degrees, d.minutes, d.seconds);
+    // The parser keeps sign and magnitude apart, and they stay apart all the way
+    // into the join. Flattening `negative` back into a signed degrees component
+    // here would lose it again for "-00*30:00", which is the whole point of the
+    // separate flag. celestialSecondsFrom is the declination counterpart of
+    // siteSecondsFrom below.
+    return Declination::fromCelestialSeconds(core::Declination::celestialSecondsFrom(d.degrees, d.minutes, d.seconds, d.negative));
 }
 
 // Signed arc-seconds for a magnitude/sign pair. The Latitude and Longitude
